@@ -148,4 +148,10 @@ MIT — use it, modify it, share it.
 
 ## Credits
 
-Built by [Luneo AI](https://github.com/LuneoAI) from real-world experience managing 30+ sprint projects with Claude Code.
+Created by **Marco C. Lorenz** — former IT forensics court expert and founder of an IT data forensics enterprise.
+
+This skill was not built from a software developer's perspective. It was built from real-world practice — managing complex systems, ensuring traceability, and maintaining quality across large-scale operations. The same principles that govern forensic evidence chains (documentation, verification, audit trails) turned out to be exactly what's missing when AI coding assistants work on multi-session projects.
+
+**sprint-session** bridges the gap between structured systems work and software development. It brings the rigor of systematic process management into the world of AI-assisted coding — without the overhead of enterprise tooling.
+
+Built and maintained by [Luneo AI](https://github.com/LuneoAI).
