@@ -146,12 +146,16 @@ See the [`examples/`](examples/) folder for:
 
 MIT — use it, modify it, share it.
 
+## Background
+
+This skill wasn't born in a software engineering lab. It grew out of practical frustration.
+
+**Marco C. Lorenz**, the creator, comes from IT forensics — years of court expertise and building a data forensics company from the ground up. In forensics, every step must be documented, every decision traceable, every handoff clean. Evidence chains don't survive sloppy handovers.
+
+When working with Claude Code on larger projects, the same problems appeared: context lost between sessions, decisions forgotten after a few sprints, quality drifting silently. The tools from software engineering (Jira, Confluence, CI/CD) were too heavy. The tools from AI coding (just start a new chat) were too light.
+
+**sprint-session** is the bridge — it brings the discipline of systematic process work into AI-assisted development, using nothing but two markdown files and a clear protocol.
+
 ## Credits
 
-Created by **Marco C. Lorenz** — former IT forensics court expert and founder of an IT data forensics enterprise.
-
-This skill was not built from a software developer's perspective. It was built from real-world practice — managing complex systems, ensuring traceability, and maintaining quality across large-scale operations. The same principles that govern forensic evidence chains (documentation, verification, audit trails) turned out to be exactly what's missing when AI coding assistants work on multi-session projects.
-
-**sprint-session** bridges the gap between structured systems work and software development. It brings the rigor of systematic process management into the world of AI-assisted coding — without the overhead of enterprise tooling.
-
-Built and maintained by [Luneo AI](https://github.com/LuneoAI).
+Created by Marco C. Lorenz | Built and maintained by [Luneo AI](https://github.com/LuneoAI)
