@@ -1,468 +1,631 @@
 ---
 name: sprint-session
-description: "Sprint-Lifecycle-Management for multi-terminal projects. 3 modes: :init (project kickoff with master brief + sprint plan), :work (execute sprint with context window protection + clean handoff), :review (E2E completion review). Trigger: /sprint-session, 'start new project', 'start sprint', projects > 1 sprint."
+description: "Sprint-Lifecycle-Management für Multi-Terminal-Projekte. 3 Modi: :init (Projekt-Kickoff mit Master-Brief + Sprint-Plan), :work (Sprint abarbeiten mit Kontextfenster-Schutz + sauberer Übergabe), :review (E2E-Abschluss-Review). Unterstützt Cluster-Modus via claude-peers für parallele Sprint-Koordination zwischen CC-Instanzen. Trigger: /sprint-session, 'neues Projekt planen', 'Sprint starten', Projekte > 1 Sprint."
 ---
 
-# Sprint-Session — Sprint Lifecycle for Multi-Terminal Projects
+# Sprint-Session — Sprint-Lifecycle für Multi-Terminal-Projekte
 
-**Purpose:** Automatic management of Master Brief + Sprint Files for larger projects. Prevents context loss between terminals, ensures clean handoffs, protects against context window overflow.
+**Zweck:** Automatisches Management von Master-Brief + Sprint-Akten für größere Projekte. Verhindert Kontextverlust zwischen Terminals, sorgt für saubere Übergaben, schützt vor Kontextfenster-Überlauf.
 
-**Core principles:**
-- Master Brief = Direction (strategically stable)
-- Sprint File = Progress (operationally alive)
-- No sprint without a write-back entry
-- No new terminal without reading both documents first
-- Clean handoff > completed sprint
-- After every task: commit + push = insurance
+**Merksatz:**
+- Master-Brief = Richtung (strategisch stabil)
+- Sprint-Akte = Verlauf (operativ lebendig)
+- Kein Sprint ohne Rückeintrag
+- Kein neuer Terminal ohne beide Dokumente zu lesen
+- Saubere Übergabe > vollständiger Sprint
+- Nach jedem Task: commit + push = Versicherung
 
-## When to activate
+## Wann aktivieren
 
-- New project > 1 sprint / > 1 terminal
-- User provides Master Brief + Sprint Plan paths (→ :work mode)
-- User says "final review" or all sprints are done (→ :review mode)
-- Project involves architecture decisions, multiple systems, follow-up sprints
+- Neues Projekt > 1 Sprint / > 1 Terminal
+- User gibt Master-Brief + Sprint-Plan Pfade an (→ :work Modus)
+- User sagt "Abschluss-Review" oder alle Sprints sind durch (→ :review Modus)
+- Projekt hat Architekturentscheidungen, mehrere Systeme, Folge-Sprints
 
-## When NOT to activate (use quick-fix workflow instead)
+## Wann NICHT aktivieren (stattdessen gsd-quick)
 
-- Small one-time fixes
-- Single-file changes
-- Tasks without follow-up sprints
+- Kleine Einmal-Fixes
+- Ein-Datei-Anpassungen
+- Aufgaben ohne Folge-Sprints
 
-## Path Convention
+## Pfad-Konvention
 
 ```
-docs/sprints/{project-name}/
-├── master-brief.md           ← strategically stable
-├── sprint-001.md             ← first sprint
+docs/sprints/{projekt-name}/
+├── master-brief.md           ← strategisch stabil
+├── sprint-001.md             ← erster Sprint
 ├── sprint-002.md
-├── sprint-003.md             ← current sprint
-├── sprint-003b.md            ← continuation (after context window cutoff)
+├── sprint-003.md             ← aktueller Sprint
 └── ...
 ```
 
 ---
 
-## Sprint Size (Rule of Thumb)
+## Sprint-Größe (Faustregel)
 
-| Tasks per Sprint | Assessment |
+| Tasks pro Sprint | Bewertung |
 |------------------|-----------|
-| 1-2 Tasks | Too small — handoff overhead not worth it |
-| 3-6 Tasks | Sweet spot — enough substance, context window stays safe |
-| 7-10 Tasks | Borderline — only if tasks are small and clear |
-| 10+ Tasks | Too large — split into two sprints, context window risk too high |
+| 1-2 Tasks | Zu klein — Übergabe-Overhead lohnt sich nicht, besser gsd-quick |
+| 3-6 Tasks | Sweet Spot — genug Substanz, Kontextfenster bleibt sicher |
+| 7-10 Tasks | Grenzwertig — nur wenn Tasks klein und klar sind |
+| 10+ Tasks | Zu groß — Sprint aufteilen, Kontextfenster-Risiko zu hoch |
 
-If a sprint has more than 6 substantial tasks during planning → split into two sprints. Two clean sprints are better than one overstuffed sprint that hits the context window limit.
+Wenn ein Sprint bei der Planung mehr als 6 substanzielle Tasks hat → in zwei Sprints aufteilen. Lieber zwei saubere Sprints als ein überfüllter, der im Kontextfenster-Limit abbricht.
 
 ---
 
-## Resilience — Protection Against Disconnects + Power Outages
+## Ausführungsmodus — Sequenziell vs. Cluster
 
-### Auto-Commit + Push After Every Task (MANDATORY)
+Bei :init nach der Planung entscheiden: **Wie werden die Sprints ausgeführt?**
 
-After every completed task (not just at sprint end):
+### Entscheidungsmatrix
+
+| Kriterium | → Sequenziell | → Cluster |
+|-----------|---------------|-----------|
+| Sprints bauen aufeinander auf | ✅ | ❌ |
+| Sprints betreffen dasselbe System | ✅ | ❌ |
+| Sprints betreffen verschiedene Systeme | möglich | ✅ besser |
+| Projekt hat klare Wave-Trennung | möglich | ✅ besser |
+| User will maximale Kontrolle | ✅ | ❌ |
+| User will maximale Geschwindigkeit | ❌ | ✅ |
+| Weniger als 3 Sprints gesamt | ✅ | Overhead lohnt nicht |
+
+### Sequenziell (Standard)
+
+Wie bisher: Ein Terminal nach dem anderen. User öffnet neues Terminal, gibt zwei Links ein, nächster Sprint startet. Einfach, sicher, bewährt.
+
+### Cluster-Modus (mit claude-peers)
+
+Mehrere CC-Sessions arbeiten gleichzeitig an verschiedenen Sprints und koordinieren sich über das Peers-Netzwerk. **Voraussetzung:** `claude-peers` MCP-Server in `.mcp.json` konfiguriert.
+
+**Rollen im Cluster:**
+
+| Rolle | Aufgabe |
+|-------|---------|
+| **Orchestrator** | Plant, verteilt Sprints, überwacht Fortschritt, löst Abhängigkeiten |
+| **Worker** | Führt einen Sprint aus, meldet Status, wartet auf Signale |
+
+**Ablauf:**
+1. Orchestrator-Session plant alle Sprints und erstellt Dependency-Graph
+2. Orchestrator startet Worker-Sessions (User öffnet Terminals)
+3. Jeder Worker setzt `set_summary` mit Sprint-Ziel
+4. Worker arbeiten unabhängig, melden Fertigstellung via `send_message`
+5. Orchestrator gibt abhängige Sprints frei wenn Vorbedingungen erfüllt
+6. Am Ende: Orchestrator macht Integration + :review
+
+**Dependency-Graph im Master-Brief:**
+
+```markdown
+## Cluster-Plan
+
+### Dependency-Graph
+Sprint 1 (Gravity-Backend) ──→ Sprint 3 (Solaris-Wiring)
+Sprint 2 (Nova-Frontend)   ──→ Sprint 3 (Solaris-Wiring)
+Sprint 4 (Matrix-Sync)     ──→ (unabhängig)
+
+### Cluster-Zuweisung
+| Sprint | System | Abhängig von | Cluster-Slot |
+|--------|--------|-------------|--------------|
+| Sprint 1 | Gravity | — | Slot A (parallel) |
+| Sprint 2 | Nova | — | Slot B (parallel) |
+| Sprint 3 | Solaris | Sprint 1 + 2 | Slot C (wartet) |
+| Sprint 4 | Matrix | — | Slot A oder B (nach Freiwerden) |
+```
+
+**Peers-Nachrichten-Protokoll:**
+
+| Signal | Von | An | Bedeutung |
+|--------|-----|------|-----------|
+| `SPRINT_STARTED:{N}` | Worker | Orchestrator | Sprint begonnen |
+| `SPRINT_DONE:{N}` | Worker | Orchestrator | Sprint abgeschlossen, alle Tasks ✅ |
+| `SPRINT_BLOCKED:{N}:{Grund}` | Worker | Orchestrator | Sprint hängt, braucht Hilfe |
+| `DEPENDENCY_MET:{N}` | Orchestrator | Worker | Vorbedingung erfüllt, Sprint darf starten |
+| `SYNC_REQUEST:{Details}` | Worker | Worker | Direkte Koordination zwischen Peers |
+
+**Regeln für Cluster-Modus:**
+- Jeder Worker hat **eigene Sprint-Akte** und **eigenen Guardian-Lock**
+- Workers ändern **nie** Dateien die einem anderen Worker gehören
+- Bei Konflikten: STOPPEN, Orchestrator benachrichtigen, nicht selbst lösen
+- Orchestrator prüft via `list_peers` regelmäßig ob alle Worker noch leben
+- Cluster-Modus erfordert Disziplin — im Zweifel lieber sequenziell
+
+### Wann Cluster abbrechen und zu sequenziell wechseln
+
+- Worker melden wiederholt Konflikte
+- Mehr als 2 `SPRINT_BLOCKED` Signale in einer Cluster-Runde
+- User sagt "zu komplex, eins nach dem anderen"
+- Abhängigkeiten stellen sich als enger heraus als geplant
+
+---
+
+## Resilienz — Schutz vor Verbindungsabbruch + Stromausfall
+
+### Auto-Commit + Push nach jedem Task (PFLICHT)
+
+Nach jedem abgeschlossenen Task (nicht erst am Sprint-Ende):
 
 ```bash
-git add -A && git commit -m "Sprint {N} Task {X}: {short description}" && git push
+git add -A && git commit -m "Sprint {N} Task {X}: {kurze Beschreibung}" && git push
 ```
 
-**Why:** Session can break at any time — mobile internet, power outage, tunnel disconnect. What's pushed is safe. What's only local is at risk.
+**Warum:** Session kann jederzeit abbrechen — mobiles Internet, Stromausfall, Tunnel-Disconnect. Was gepusht ist, ist sicher. Was nur lokal liegt, ist verloren.
 
-**Rules:**
-- Commit message always starts with Sprint number + Task number
-- Push after EVERY commit, not just at the end
-- Also commit + push sprint documents (master-brief.md, sprint-NNN.md)
-- On disconnect, the last push is the recovery point
+**Regeln:**
+- Commit-Message immer mit Sprint-Nummer + Task-Nummer beginnen
+- Push nach JEDEM Commit, nicht erst am Ende
+- Auch Sprint-Dokumente (master-brief.md, sprint-NNN.md) committen + pushen
+- Bei Verbindungsabbruch ist der letzte Push der Wiederherstellungspunkt
 
-### Disconnect Recovery Protocol
+### Verbindungsabbruch-Protokoll
 
-When the user opens a new terminal after a disconnect:
+Wenn der User nach einem Abbruch ein neues Terminal öffnet:
 
-**User says:** "Session broke off, where are we?" or pastes the two links.
+**User sagt:** "Session abgebrochen, wo stehen wir?" oder gibt die zwei Links ein.
 
-**Claude does:**
-1. `git log --oneline -20` → check recent commits
-2. `git status` → find uncommitted changes
-3. Read sprint file → what was planned vs. what is committed
-4. Report to user: "Sprint N was at Task X. Tasks 1-3 are committed + pushed. Task 4 was half done — I see uncommitted changes in [files]. Should I finish Task 4 or reset?"
-5. If uncommitted changes look clean → commit + push
-6. If uncommitted changes are inconsistent → `git stash` and start fresh
+**Claude macht:**
+1. `git log --oneline -20` → letzte Commits prüfen
+2. `git status` → uncommittete Änderungen finden
+3. Sprint-Akte lesen → was war geplant vs. was ist committed
+4. Bericht an User: "Sprint N war bei Task X. Tasks 1-3 sind committed + gepusht. Task 4 war halb fertig — ich sehe uncommittete Änderungen in [Dateien]. Soll ich Task 4 fertigmachen oder zurücksetzen?"
+5. Falls uncommittete Änderungen sauber aussehen → committen + pushen
+6. Falls uncommittete Änderungen inkonsistent → `git stash` und sauber neu anfangen
 
-**Important:** No chat history needed. Git history + sprint documents are the source of truth.
+**Wichtig:** Kein Chatverlauf nötig. Git-History + Sprint-Dokumente sind die Wahrheit.
 
-### When User is on Mobile / Unstable Connection
+### Wenn User mobil unterwegs ist
 
-When the user says "I'm mobile" or "on the road":
-- **Commit more frequently** — after every substantial file change, not just after tasks
-- **Plan shorter sprints** — 3-4 tasks instead of 5-6
-- **Write handoff documents earlier** — start preparing at 50% of the sprint
-- **Don't start long build processes** that leave inconsistencies on abort
+Wenn der User sagt "Ich bin mobil" oder "Bin unterwegs":
+- **Noch häufiger committen** — nach jeder substanziellen Dateiänderung, nicht nur nach Tasks
+- **Kürzere Sprints planen** — 3-4 Tasks statt 5-6
+- **Übergabe-Dokumente früher schreiben** — ab 50% des Sprints bereits vorbereiten
+- **Keine langen Build-Prozesse** starten die bei Abbruch Inkonsistenzen hinterlassen
 
 ---
 
-## Mode 1: :init — Project Kickoff
+## Modus 1: :init — Projekt-Kickoff
 
-**Trigger:** Starting a new larger project.
+**Trigger:** Neues größeres Projekt starten.
 
-### Flow
+### Ablauf
 
-1. **Start brainstorming** → clarify vision, goals, architecture
-2. **Break project into** Waves → Stages → Sprints
-   - Small projects (1-3 waves): plan EVERYTHING in detail
-   - Complex projects (4+ waves): Waves 1-2 in detail, rest as rough goals only
-3. **Generate Master Brief** (`docs/sprints/{name}/master-brief.md`)
-4. **Generate first Sprint Plan** (`docs/sprints/{name}/sprint-001.md`)
-5. **Output handoff message**
+1. **Brainstorming aufrufen** → Vision, Ziele, Architektur klären
+   - Visual Companion nutzen falls visuelle Fragen: `https://brainstorm.luneo.cloud/`
+2. **Projekt aufteilen** in Wellen → Etappen → Sprints
+   - Kleine Projekte (1-3 Wellen): ALLES durchplanen
+   - Komplexe Projekte (4+ Wellen): Welle 1-2 detailliert, Rest grob (Ziele, nicht Tasks)
+3. **Ausführungsmodus entscheiden** → Sequenziell oder Cluster?
+   - Sprints auf Abhängigkeiten analysieren: Welche können parallel laufen?
+   - User fragen: "Dieses Projekt hat N unabhängige Sprints — soll ich die als Cluster koordinieren oder eins nach dem anderen?"
+   - Bei Cluster: Dependency-Graph erstellen und in Master-Brief aufnehmen
+   - Bei Sequenziell: normal weitermachen wie bisher
+4. **Master-Brief generieren** (`docs/sprints/{name}/master-brief.md`)
+   - Bei Cluster-Modus: `## Cluster-Plan` Abschnitt mit Dependency-Graph und Slot-Zuweisung
+5. **Sprint-Pläne generieren**
+   - Sequenziell: nur ersten Sprint (`sprint-001.md`)
+   - Cluster: alle parallelen Sprints der ersten Runde (`sprint-001.md`, `sprint-002.md`, ...)
+6. **Übergabe-Message ausgeben**
+   - Sequenziell: wie bisher (zwei Links)
+   - Cluster: Orchestrator-Anweisungen (welche Terminals öffnen, welcher Sprint wohin)
 
-### Master Brief Template
+### Master-Brief Template
 
 ```markdown
-# Master Brief: {Project Name}
+# Master-Brief: {Projektname}
 
-> Created: {Date} | Last Update: {Date}
+> Erstellt: {Datum} | Letztes Update: {Datum}
 
-## Vision / North Star
-{What do we want to achieve and why}
+## Vision / Nordstern
+{Was wollen wir erreichen und warum}
 
-## Target State
-{What does the end result look like}
+## Zielbild
+{Wie sieht das Endergebnis aus}
 
-## Architecture Principles
-{Technical guardrails}
+## Architektur-Grundsätze
+{Technische Leitplanken}
 
-## Priorities
-1. {Highest priority}
+## Prioritäten
+1. {Höchste Priorität}
 2. ...
 
-## Not Priority (consciously excluded)
-- {What we deliberately do NOT do}
+## Nicht Priorität (bewusst ausgeklammert)
+- {Was wir bewusst NICHT machen}
 
-## Rules for Work
-- No sprint without a write-back entry
-- No new terminal without reading Master Brief + Sprint File first
-- On context window limit: clean abort, don't push through
-- On architecture/design ambiguity: STOP and ask
+## Regeln für die Arbeit
+- Subagent-driven Development (immer)
+- Kein Sprint ohne Rückeintrag
+- Kein neuer Terminal ohne Master-Brief + Sprint-Akte zu lesen
+- Bei Kontextfenster-Limit: sauber abbrechen, nicht weiterwursteln
+- Bei Architektur/Design-Unklarheiten: STOPPEN und fragen
 
-## Quality Baseline
-{3-5 lines defining what "clean code" means in this project. Every sprint retro checks against this.}
-- Style: {e.g. camelCase for JS, snake_case for Python}
-- Architecture: {e.g. "Controller → Service → Repository, no shortcuts"}
-- Tests: {e.g. "Every endpoint has at least one happy-path test"}
-- UI: {e.g. "No inline styles, responsive from 768px"}
+## Quality-Baseline
+{3-5 Zeilen die definieren was "sauberer Code" in diesem Projekt heißt. Jeder Sprint-Retro prüft dagegen.}
+- Stil: {z.B. camelCase für JS, snake_case für Python}
+- Architektur: {z.B. "Controller → Service → Repository, keine Shortcuts"}
+- Tests: {z.B. "Jeder Endpoint hat mindestens einen Happy-Path-Test"}
+- UI: {z.B. "Echte Umlaute, keine Inline-Styles, responsive ab 768px"}
 
-## Decisions
-| # | Decision | Why | Sprint |
-|---|----------|-----|--------|
-| — | Filled during project lifecycle | — | — |
+## Entscheidungen
+| # | Entscheidung | Warum | Sprint |
+|---|-------------|-------|--------|
+| — | Wird im Projektverlauf gefüllt | — | — |
 
-## Project Breakdown
+## Projekt-Aufteilung
 
-### Wave 1: {Name}
-| Sprint | Goal | Status | Date |
-|--------|------|--------|------|
-| Sprint 1 | {Goal} | ⬜ open | — |
-| Sprint 2 | {Goal} | ⬜ open | — |
+### Welle 1: {Name}
+| Sprint | Ziel | Status | Datum |
+|--------|------|--------|-------|
+| Sprint 1 | {Ziel} | ⬜ offen | — |
+| Sprint 2 | {Ziel} | ⬜ offen | — |
 
-### Wave 2: {Name}
-| Sprint | Goal | Status | Date |
-|--------|------|--------|------|
-| Sprint 3 | {Goal} | ⬜ open | — |
+### Welle 2: {Name}
+| Sprint | Ziel | Status | Datum |
+|--------|------|--------|-------|
+| Sprint 3 | {Ziel} | ⬜ offen | — |
 
-**Status Legend:** ⬜ open | 🔄 in progress | ✅ done | ⏭️ skipped
+**Status-Legende:** ⬜ offen | 🔄 in Arbeit | ✅ erledigt | ⏭️ übersprungen
 
-## Overall Progress
-- **Total sprints:** N
-- **Completed:** 0/N (0%)
-- **Current wave:** 1
-- **Next sprint:** Sprint 1
+## Gesamtfortschritt
+- **Sprints gesamt:** N
+- **Erledigt:** 0/N (0%)
+- **Aktuelle Welle:** 1
+- **Nächster Sprint:** Sprint 1
 ```
 
-### Sprint Plan Template
+### Sprint-Plan Template
 
 ```markdown
-# Sprint {NNN}: {Title}
+# Sprint {NNN}: {Titel}
 
-> Project: {Project Name} | Date: {Date}
-> Master Brief: docs/sprints/{name}/master-brief.md
+> Projekt: {Projektname} | Datum: {Datum}
+> Master-Brief: docs/sprints/{name}/master-brief.md
 
-## Goal of This Sprint
-{What gap is being closed}
+## Ziel dieses Sprints
+{Welche Lücke wird geschlossen}
 
-## Context (from Master Brief)
-{Relevant excerpt — what does this terminal need to know}
+## Kontext (aus Master-Brief)
+{Relevanter Auszug — was muss dieses Terminal wissen}
 
 ## Tasks
-{Detailed task list}
+{Detaillierte Tasks im GSD-Plan-Format mit <task>-XML}
 
-## Acceptance Criteria
-- [ ] {What must be green at the end}
+## Akzeptanzkriterien
+- [ ] {Was muss am Ende grün sein}
 
-## After This Sprint
-- Update sprint file
-- Update Master Brief status table
-- Prepare next sprint plan
+## Nach diesem Sprint
+- Sprint-Akte aktualisieren
+- Master-Brief Status-Tabelle updaten
+- Nächsten Sprint-Plan vorbereiten
 ```
 
 ---
 
-## Mode 2: :work — Sprint Execution
+## Modus 2: :work — Sprint-Arbeit
 
-**Trigger:** User provides Master Brief + Sprint Plan paths. Or this terminal should execute the next sprint from the previous terminal's handoff.
+**Trigger:** User gibt Master-Brief + Sprint-Plan Pfade an. Oder dieses Terminal soll den nächsten Sprint aus der Übergabe des vorherigen Terminals abarbeiten.
 
-### Phase A — Read-in (MANDATORY)
+### Phase A — Einlesen (PFLICHT)
 
-1. **Read Master Brief** → understand the big picture (vision, architecture, current state)
-2. **Read Sprint Plan** → understand the concrete assignment
-3. **Confirm to user:** "Project understood, starting Sprint {N} — Goal: {Goal}"
+1. **Master-Brief lesen** → Gesamtbild verstehen (Vision, Architektur, aktueller Stand)
+2. **Sprint-Plan lesen** → konkreten Auftrag verstehen
+3. **Bestätigung an User:** "Projekt verstanden, Sprint {N} starte ich jetzt — Ziel: {Ziel}"
 
-### Phase B — Clarify Questions (BEFORE coding starts)
+### Phase B — Fragen klären (BEVOR losgecodet wird)
 
-4. Review sprint plan: Is everything clear enough to start?
-5. If unclear on **architecture, design, or direction**: **STOP and ask**
-   - Example: "Before I start Sprint 3 — I have 2 questions:"
-   - "1. Should the new endpoint go under /api/v2 or /api/v1?"
-   - "2. The database migration — extend existing or create new?"
-6. **Purely technical decisions** (which library, which loop type) → decide yourself
-7. **Architecture + Design** (where does what live, how does data flow, what does the user see) → **always ask**
+4. Sprint-Plan durchgehen: Ist alles klar genug um loszulegen?
+5. Falls Unklarheiten bei **Architektur, Design oder Richtung**: **STOPPEN und fragen**
+   - Beispiel: "Bevor ich Sprint 3 starte — ich habe 2 Fragen:"
+   - "1. Soll der neue Endpoint unter /api/v2 oder /api/v1 laufen?"
+   - "2. Die Datenbank-Migration — bestehend erweitern oder neu?"
+6. **Rein technische Entscheidungen** (welche Library, welcher Loop-Typ) → selbst entscheiden
+7. **Architektur + Design** (wo lebt was, wie fließen Daten, was sieht der User) → **immer fragen**
+8. Falls visuelle Fragen → Visual Companion: `https://brainstorm.luneo.cloud/`
 
-### Phase C — Execute (with Sub-agents if available)
+### Phase B.1 — Peers-Setup (nur im Cluster-Modus)
 
-8. Work through tasks from sprint plan
-9. After every task: verify the task works as intended
-10. **After every verified task: commit + push** (Sprint-N Task-X: description)
-11. You may STOP and ask questions during work too
-12. **Context window awareness:** Continuously estimate your own context consumption
+Falls der Master-Brief einen Cluster-Plan enthält:
 
-### Phase C.1 — Multi-Terminal Awareness
+6. **Peers-Netzwerk prüfen:** `list_peers` (scope: machine) — wer ist noch da?
+7. **Eigene Rolle erkennen:**
+   - Orchestrator: Überwacht, gibt Sprints frei, macht am Ende Integration
+   - Worker: Führt zugewiesenen Sprint aus, meldet Status
+8. **Summary setzen:** `set_summary` mit "Sprint {N}: {Ziel} [{System}]"
+9. **Als Worker:** Auf `DEPENDENCY_MET` warten falls Sprint Abhängigkeiten hat
+10. **Als Orchestrator:** Peers überwachen, bei `SPRINT_DONE` nächste Abhängigkeiten freigeben
 
-When multiple terminals are active simultaneously:
+### Phase C — Arbeiten (Subagent-Driven)
 
-13. **Check at start:** `git log --oneline -5` — is another terminal working on the same project?
-14. **Check for conflicts:** Are there active changes to the same files/directories?
-15. **Clarify scope:** If another terminal is active:
-    - What system/directory is it editing?
-    - Are there overlaps with my sprint?
-    - If yes: inform user and clarify order
-    - If no: continue in parallel, but clearly limit own scope
-16. **Before every push:** `git pull --rebase` to avoid conflicts with other terminals
-17. **On merge conflicts:** STOP, inform user, do not blindly resolve
+9. Tasks aus Sprint-Plan mit `subagent-driven-development` abarbeiten
+10. Nach jedem Task: `gsd-verify` auf diesen Task
+11. **Nach jedem verifizierten Task: commit + push** (Sprint-N Task-X: Beschreibung)
+12. Auch WÄHREND der Arbeit darf gestoppt und gefragt werden
+13. **Kontextfenster-Awareness:** Fortlaufend eigenen Kontextverbrauch einschätzen
+14. **Im Cluster-Modus:** Summary nach jedem Task aktualisieren (`set_summary` mit Fortschritt)
 
-### Phase D — Context Window Protection (CRITICAL)
+### Phase C.1 — Multi-Terminal-Awareness
+
+Wenn mehrere Terminals gleichzeitig aktiv sind (häufiger Fall: 4-5 Terminals):
+
+14. **Zu Beginn prüfen:** `git log --oneline -5` — arbeitet ein anderes Terminal gerade am selben Projekt?
+15. **Guardian-Status prüfen:** Gibt es aktive Locks auf das Zielsystem?
+16. **Abgrenzung klären:** Falls ein anderes Terminal aktiv ist:
+    - Welches System/Verzeichnis bearbeitet es?
+    - Gibt es Überschneidungen mit meinem Sprint?
+    - Falls ja: User informieren und Reihenfolge klären
+    - Falls nein: parallel weiterarbeiten, aber eigenen Scope klar eingrenzen
+17. **Vor jedem Push:** `git pull --rebase` um Konflikte mit anderen Terminals zu vermeiden
+18. **Bei Merge-Konflikten:** STOPPEN, User informieren, nicht blind resolven
+
+### Phase D — Kontextfenster-Schutz (KRITISCH)
 
 ```
-WHEN context window approaches the limit:
-  → DO NOT keep going and hope for the best
-  → DO NOT "quickly squeeze in the last feature"
-  → IMMEDIATELY abort cleanly:
-    1. Complete current task or mark where you stopped
-    2. Update sprint file (what's done, what's open)
-    3. Update Master Brief status
-    4. Write next sprint plan (sprint-NNNb for continuation)
-    5. Output handoff message
+WENN Kontextfenster sich dem Limit nähert:
+  → NICHT weitermachen und hoffen
+  → NICHT "noch schnell das letzte Feature"
+  → SOFORT sauber abbrechen:
+    1. Aktuellen Task abschließen oder markieren wo man steht
+    2. Sprint-Akte aktualisieren (was geschafft, was offen)
+    3. Master-Brief Status updaten
+    4. Nächsten Sprint-Plan schreiben (sprint-NNNb für Fortsetzung)
+    5. Übergabe-Message ausgeben
 ```
 
-**Rules:**
-- Better to abort a sprint early than drift into chaos
-- Never "quickly" do something when the window is tight
-- Always reserve 20% context for handoff documents
-- Rule of thumb: After 3-4 complex tasks, actively check if handoff makes sense
-- On signs of stress (repetitions, forgetting, inconsistencies): STOP immediately
-- Clean handoff > completed sprint
+**Regeln:**
+- Lieber einen Sprint früher abbrechen als ins Chaos driften
+- Nie "noch schnell" etwas machen wenn das Fenster knapp wird
+- Immer 20% Kontext reservieren für Übergabe-Dokumente
+- Faustregel: Nach 3-4 komplexen Tasks aktiv prüfen ob Übergabe sinnvoll ist
+- Bei Zeichen von Stress (Wiederholungen, Vergessen, Inkonsistenzen): SOFORT stoppen
+- Saubere Übergabe > vollständiger Sprint
 
-### Phase E — Close Sprint
+### Phase E — Sprint abschließen
 
-13. Run code review + security check + gather metrics
-    - **Quality Baseline check:** Verify code against the Quality Baseline in Master Brief
-    - Detect drift: Did this sprint degrade style, architecture, or test coverage?
-    - If yes: document as finding and correct in next sprint
-14. Update sprint file
-15. **Maintain Decision Log:** Were architecture or design decisions made in this sprint?
-    - If yes: Add one line per decision to the `## Decisions` table in Master Brief
-    - Format: What was decided | Why | In which sprint
-    - Only non-trivial decisions (architecture, technology choices, conscious trade-offs)
-    - Pure implementation details do NOT belong here
-16. **Slim down + update Master Brief:**
-    - Update status table (Sprint → ✅, update overall progress)
-    - Remove obsolete information (completed detail notes, outdated assumptions)
-    - Vision, goal, architecture **NEVER remove** — that stays forever
-    - Decision Log and Quality Baseline **NEVER remove** — these grow with the project
-    - Keep only what matters: what was defined, what needs to be done, roughly how
-    - Goal: Next terminal gets a lean, precise document — not a bloated logbook
-17. Generate next sprint plan
-18. **Output handoff message** (see format below)
+13. **Im Cluster-Modus (Worker):** `send_message` an Orchestrator: `SPRINT_DONE:{N}`
+    - Summary aktualisieren: `set_summary` mit "Sprint {N} ✅ abgeschlossen"
+    - Auf nächste Anweisung vom Orchestrator warten (neuer Sprint oder "fertig")
+14. **Im Cluster-Modus (Orchestrator):** Bei `SPRINT_DONE` von Worker:
+    - Dependency-Graph prüfen: Sind jetzt neue Sprints freigegeben?
+    - Falls ja: `send_message` mit `DEPENDENCY_MET:{N}` an wartende Worker
+    - Falls alle Sprints durch: Integration + :review starten
+15. `sprint-retro` ausführen (Code Review + Security + Metriken + 3 User-Fragen)
+    - **Quality-Baseline-Check:** Code gegen die Quality-Baseline im Master-Brief prüfen
+    - Drift erkennen: Hat dieser Sprint den Stil, die Architektur oder die Testabdeckung verschlechtert?
+    - Falls ja: als Finding dokumentieren und im nächsten Sprint korrigieren
+14. Sprint-Akte aktualisieren
+15. **Entscheidungs-Log pflegen:** Wurden in diesem Sprint Architektur- oder Design-Entscheidungen getroffen?
+    - Falls ja: Eine Zeile pro Entscheidung in die `## Entscheidungen`-Tabelle im Master-Brief eintragen
+    - Format: Was wurde entschieden | Warum | In welchem Sprint
+    - Nur nicht-triviale Entscheidungen (Architektur, Technologiewahl, bewusste Trade-offs)
+    - Rein technische Implementierungsdetails gehören NICHT hierhin
+16. **Master-Brief verschlanken + updaten:**
+    - Status-Tabelle updaten (Sprint → ✅, Gesamtfortschritt aktualisieren)
+    - Obsolete Informationen entfernen (erledigte Detail-Notizen, überholte Annahmen)
+    - Vision, Ziel, Architektur **NIE entfernen** — das bleibt immer
+    - Entscheidungs-Log und Quality-Baseline **NIE entfernen** — das wächst mit dem Projekt
+    - Nur das Wichtigste behalten: was definiert wurde, was gemacht werden muss, grob wie
+    - Ziel: Nächstes Terminal bekommt ein schlankes, präzises Dokument — nicht ein aufgeblähtes Logbuch
+17. Nächsten Sprint-Plan generieren
+18. **Übergabe-Message ausgeben** (siehe Format unten)
 
-### Handoff Format (MANDATORY at the end of every session)
+### Übergabe-Format (PFLICHT am Ende jeder Session)
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- SPRINT {N} COMPLETED
+ SPRINT {N} ABGESCHLOSSEN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## What I completed
+## Was ich erledigt habe
 
 | # | Task | Status |
 |---|------|--------|
-| 1 | {Task Name} | ✅ done |
-| 2 | {Task Name} | ✅ done |
-| 3 | {Task Name} | ⚠️ partial (reason) |
+| 1 | {Task-Name} | ✅ erledigt |
+| 2 | {Task-Name} | ✅ erledigt |
+| 3 | {Task-Name} | ⚠️ teilweise (Grund) |
 
-## What works now
-- {Feature/endpoint/UI element that is now live}
-- {What didn't work before and works now}
+## Was jetzt funktioniert
+- {Feature/Endpoint/UI-Element das jetzt live ist}
+- {Was vorher nicht ging und jetzt geht}
 
-## What the next sprint does
-- {Sprint N+1 goal}
-- {Concrete tasks roughly}
-- {What comes after that}
+## Was der nächste Sprint macht
+- {Sprint N+1 Ziel}
+- {Konkrete Tasks grob}
+- {Was danach noch kommt}
 
-## Your two links
+## Deine zwei Links
 
-Terminal done. Open a new terminal and enter:
+Terminal fertig. Öffne ein neues Terminal und gib ein:
 
-> Here is the Master Brief: `docs/sprints/{name}/master-brief.md`
-> And here the Sprint Plan: `docs/sprints/{name}/sprint-{N+1}.md`
-> Read both, then execute Sprint {N+1}.
+> Hier ist der Master-Brief: `docs/sprints/{name}/master-brief.md`
+> Und hier der Sprint-Plan: `docs/sprints/{name}/sprint-{N+1}.md`
+> Lies beides, dann arbeite Sprint {N+1} ab.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ---
 
-## Mode 3: :review — Review (Wave Review + Final Review)
+## Modus 3: :review — Review (Zwischen-Review + Abschluss-Review)
 
-**Trigger:** End of a wave OR completion of the entire project. Own terminal with fresh context window.
+**Trigger:** Ende einer Welle ODER Abschluss des Gesamtprojekts. Eigener Terminal mit frischem Kontextfenster.
 
-### Two Review Levels
+### Zwei Review-Stufen
 
-| Level | When | Scope | Duration |
-|-------|------|-------|----------|
-| **Wave Review** (lightweight) | After each completed wave | Consistency + Quality Baseline | 1 terminal, fast |
-| **Final Review** (comprehensive) | After the last sprint | E2E over everything | 1 terminal, thorough |
+| Stufe | Wann | Umfang | Dauer |
+|-------|------|--------|-------|
+| **Wellen-Review** (leichtgewichtig) | Nach jeder abgeschlossenen Welle | Konsistenz + Quality-Baseline | 1 Terminal, schnell |
+| **Abschluss-Review** (vollständig) | Nach dem letzten Sprint | E2E über alles | 1 Terminal, gründlich |
 
-### Wave Review (after each wave)
+### Wellen-Review (nach jeder Welle)
 
-1. **Read Master Brief** → which sprints belong to this wave
-2. **Read sprint files for this wave** → what was done
-3. **Consistency check:**
-   - Do the sprints in this wave fit together?
-   - Quality Baseline maintained? (style, architecture, tests)
-   - Decisions from different sprints contradictory?
-   - Any half-finished transitions between sprints?
-4. **Fix found problems immediately** — small corrections directly, larger ones as tasks in next wave
-5. **Update Master Brief:** Wave → ✅, document findings
-6. **Plan next wave in detail** if only rough goals exist
+1. **Master-Brief lesen** → welche Sprints gehören zu dieser Welle
+2. **Sprint-Akten dieser Welle lesen** → was wurde gemacht
+3. **Konsistenz-Check** (ein Subagent):
+   - Passen die Sprints dieser Welle zusammen?
+   - Quality-Baseline eingehalten? (Stil, Architektur, Tests)
+   - Entscheidungen aus verschiedenen Sprints widersprüchlich?
+   - Gibt es halbfertige Übergänge zwischen Sprints?
+4. **Gefundene Probleme sofort fixen** — kleine Korrekturen direkt, größere als Task in nächste Welle
+5. **Master-Brief updaten:** Welle → ✅, Findings dokumentieren
+6. **Nächste Welle detailliert planen** falls nur Grobziele vorhanden
 
-### Final Review (after the last sprint)
+### Abschluss-Review (nach dem letzten Sprint)
 
-1. **Read Master Brief** → all waves/sprints and their status
-2. **Read all sprint files** → what was done in each sprint
-3. **E2E Review** (parallel sub-agents if available):
-   - Code review on ALL changes (one sub-agent per system)
-   - Security audit on ALL changes
-   - Quality Baseline drift across the whole project (Sprint 1 vs. last sprint)
-   - Inconsistencies between sprints
-   - Dead spots, gaps, half-finished transitions
-   - Forgotten features (sprint plan vs. actually implemented)
-   - Decision Log check: Were all decisions upheld or silently undermined?
-4. **Fix found errors directly**
-5. **E2E tests** where possible
-6. **Generate review report**
-7. **Finalize Master Brief** (Project status → ✅ if everything is clean)
-
----
-
-## Planning Intelligence
-
-**Core principle:** Plan extensively at the start — then execute fast.
-
-**No replanning when:**
-- Sprint plan is clear and detailed → start immediately
-- Just because a new terminal was started → reading Master Brief + Sprint Plan is enough
-- Small deviations → document in sprint plan, don't replan
-
-**Replanning needed when (skill detects this automatically):**
-- Next wave has only rough goals, no concrete tasks
-  → "Wave 3 is not yet detailed — before I start Sprint 5, let me plan it through"
-- Architecture decision from previous sprint changes the plan
-- Sprint plan references tasks that aren't clear enough
-- User explicitly says: "Adjust the plan"
-
-### Scope Creep Detection (automatic)
-
-**Trigger:** The skill checks overall progress in the Master Brief at every sprint close.
-
-```
-WHEN actual sprint count > 150% of originally planned count:
-  → AUTOMATICALLY trigger scope check
-```
-
-**Example:** Originally 8 sprints planned, we're now at sprint 13 with no end in sight.
-
-**Claude says:**
-
-> ⚠️ **Scope Check:** The project has grown significantly beyond the original plan
-> (originally 8 sprints, currently 13, estimated 5 more remaining).
->
-> Three options:
-> **A) Reduce scope** — What can we drop? What's nice-to-have?
-> **B) Consciously continue** — The additional scope is justified, continue as planned.
-> **C) Split the project** — Close Phase 1 here, start the rest as a separate follow-up project.
->
-> Which option?
-
-**Rules:**
-- Scope check is a question, not a blocker — the user decides
-- After decision: update Master Brief (new sprint count or reduced scope)
-- For option C: close current project cleanly with :review, new :init for Phase 2
-- Scope check at most once per wave, don't repeat at every sprint
+1. **Master-Brief lesen** → alle Wellen/Sprints und deren Status
+2. **Alle Sprint-Akten lesen** → was wurde in jedem Sprint gemacht
+3. **E2E-Review** (parallele Subagenten):
+   - Code Review auf GESAMTE Änderungen (ein Subagent pro System)
+   - Security Audit auf GESAMTE Änderungen
+   - Quality-Baseline-Drift über das ganze Projekt (Sprint 1 vs. letzter Sprint)
+   - Inkonsistenzen zwischen Sprints finden
+   - Tote Stellen, Lücken, halbfertige Übergänge
+   - Vergessene Features (Sprint-Plan vs. tatsächlich umgesetzt)
+   - Entscheidungs-Log prüfen: Wurden alle Entscheidungen eingehalten oder still unterwandert?
+4. **Gefundene Fehler direkt fixen** (Subagent-Driven)
+5. **E2E-Tests** soweit möglich
+6. **Review-Report generieren**
+7. **Master-Brief finalisieren** (Projekt-Status → ✅ wenn alles sauber)
 
 ---
 
-## Rollback Strategy — When a Sprint Breaks Code
+## Planungs-Intelligenz
 
-### Detection
+**Kernprinzip:** Am Anfang ausgiebig planen — danach schnell umsetzen.
 
-After verification or code review it turns out: the sprint damaged something.
+**Keine Neuplanung wenn:**
+- Sprint-Plan ist klar und detailliert → sofort loslegen
+- Nur weil ein neues Terminal gestartet wurde → Master-Brief + Sprint-Plan lesen reicht
+- Kleine Abweichungen → im Sprint-Plan dokumentieren, nicht neu planen
 
-### Immediate Actions
+**Neuplanung nötig wenn (Skill erkennt das selbst):**
+- Nächste Welle hat nur Grobziele, keine konkreten Tasks
+  → "Welle 3 ist noch nicht detailliert — bevor ich Sprint 5 starte, plane ich kurz durch"
+- Architektur-Entscheidung aus vorherigem Sprint verändert den Plan
+- Sprint-Plan referenziert Tasks die nicht klar genug sind
+- User sagt explizit: "Plan nochmal anpassen"
 
-1. **Damage assessment:** `git diff HEAD~{N}` — what was changed in this sprint?
-2. **Localize:** Which file(s) are the problem? Everything or just a part?
-3. **Decision:**
+### Scope-Creep-Erkennung (automatisch)
 
-| Situation | Action |
+**Trigger:** Der Skill prüft bei jedem Sprint-Abschluss den Gesamtfortschritt im Master-Brief.
+
+```
+WENN tatsächliche Sprint-Anzahl > 150% der ursprünglich geplanten Anzahl:
+  → AUTOMATISCH Scope-Check auslösen
+```
+
+**Beispiel:** Ursprünglich 8 Sprints geplant, wir sind jetzt bei Sprint 13 und es ist kein Ende in Sicht.
+
+**Claude sagt dann:**
+
+> ⚠️ **Scope-Check:** Das Projekt ist deutlich größer geworden als geplant
+> (ursprünglich 8 Sprints, aktuell 13, geschätzt noch 5 offen).
+>
+> Drei Optionen:
+> **A) Scope reduzieren** — Was können wir weglassen? Was ist nice-to-have?
+> **B) Bewusst weitermachen** — Der zusätzliche Umfang ist gerechtfertigt, weiter wie geplant.
+> **C) Projekt aufteilen** — Phase 1 hier abschließen, Rest als eigenständiges Folgeprojekt.
+>
+> Welche Option?
+
+**Regeln:**
+- Scope-Check ist eine Frage, kein Blocker — der User entscheidet
+- Nach Entscheidung: Master-Brief updaten (neue Sprint-Anzahl oder reduzierter Scope)
+- Bei Option C: Aktuelles Projekt sauber mit :review abschließen, neuen :init für Phase 2
+- Scope-Check maximal einmal pro Welle, nicht bei jedem Sprint wiederholen
+
+---
+
+## Rollback-Strategie — Wenn ein Sprint Code kaputt macht
+
+### Erkennung
+
+Nach `gsd-verify` oder `sprint-retro` stellt sich heraus: Der Sprint hat etwas beschädigt.
+
+### Sofort-Maßnahmen
+
+1. **Schadensanalyse:** `git diff HEAD~{N}` — was wurde in diesem Sprint alles geändert?
+2. **Lokalisieren:** Welche Datei(en) sind das Problem? Alles oder nur ein Teil?
+3. **Entscheidung:**
+
+| Situation | Aktion |
 |-----------|--------|
-| One task introduced a bug | Fix the bug, don't roll back the entire sprint |
-| Multiple tasks are broken and intertwined | `git stash` uncommitted changes, then check task-by-task |
-| Sprint went in a fundamentally wrong direction | `git revert` the sprint commits (creates counter-commits, history preserved) |
-| Everything is broken, nothing salvageable | Restore from last known good state (backup/snapshot if available) |
+| Ein Task hat einen Bug eingeführt | Bug fixen, nicht den ganzen Sprint zurückrollen |
+| Mehrere Tasks sind kaputt verwoben | `git stash` für uncommittete Änderungen, dann Task-für-Task prüfen |
+| Sprint hat grundlegend falsche Richtung genommen | `git revert` der Sprint-Commits (erzeugt Gegen-Commits, Geschichte bleibt) |
+| Alles ist kaputt, nichts zu retten | Guardian-Snapshot als Fallback: `bash /root/guardian/scripts/guardian-snapshot.sh` |
 
-### Rules
+### Regeln
 
-- **Never `git reset --hard` without explicit user confirmation** — that destroys history
-- **Always `git revert` instead of `git reset`** — history stays intact
-- After rollback: update sprint file with "Sprint N rolled back, reason: ..."
-- Write new sprint plan that accounts for the problem
+- **Nie `git reset --hard` ohne explizite User-Bestätigung** — das zerstört History
+- **Immer `git revert` statt `git reset`** — Geschichte bleibt erhalten
+- **Guardian-Snapshot ist der letzte Fallback**, nicht die erste Option
+- Nach Rollback: Sprint-Akte aktualisieren mit "Sprint N zurückgerollt, Grund: ..."
+- Neuen Sprint-Plan schreiben der das Problem berücksichtigt
 
 ---
 
-## Parallel Sprints — Rules for Simultaneous Terminals
+## Parallele Sprints — Cluster-Koordination mit claude-peers
 
-### When allowed
+### Voraussetzungen
 
-Parallel sprints are only allowed when:
-- The sprints affect **different systems/directories** (e.g. backend + frontend)
-- The sprints **don't modify shared files**
-- Both sprints are clearly scoped to avoid conflicts
+- `claude-peers` MCP-Server in `.mcp.json` konfiguriert
+- Broker läuft auf localhost:7899 (wird automatisch gestartet)
+- Alle Sessions auf demselben Server (116.203.236.82)
+- Guardian-Locks für jedes System separat angefordert
 
-### When forbidden
+### Wann Cluster-Modus erlaubt
 
-- Sprints that touch the same files or same system → sequential
-- Sprints that depend on each other (Sprint 3 needs result of Sprint 2) → sequential
-- When in doubt → sequential. Parallelism is an optimization, not the default.
+- Sprints betreffen **verschiedene Systeme/Verzeichnisse** (z.B. Backend + Frontend)
+- Sprints ändern **keine gemeinsamen Dateien**
+- Dependency-Graph ist klar — welche Sprints können parallel, welche müssen warten
+- Mindestens 3 Sprints die von Parallelisierung profitieren
 
-### Flow for parallel sprints
+### Wann sequenziell bleiben
 
-1. **Plan both sprints** before either starts
-2. **Separate sprint files** (sprint-003-backend.md, sprint-003-frontend.md)
-3. **Define merge point:** When do the results come together?
-4. **After both complete:** Check integration (own mini-sprint or :review)
+- Sprints die dieselben Dateien oder dasselbe System betreffen
+- Sprints die eng aufeinander aufbauen (Sprint 3 braucht Ergebnis von Sprint 2)
+- Weniger als 3 Sprints gesamt (Cluster-Overhead lohnt nicht)
+- Im Zweifel → sequenziell. Parallelität ist Optimierung, nicht Standard.
+
+### Cluster-Ablauf (Zusammenfassung)
+
+1. **:init** plant alle Sprints + erstellt Dependency-Graph im Master-Brief
+2. **User öffnet N Terminals** — jedes mit eigenem Sprint-Plan
+3. **Jedes Terminal** registriert sich automatisch im Peers-Netzwerk
+4. **Orchestrator-Terminal** überwacht via `list_peers` und koordiniert via `send_message`
+5. **Worker-Terminals** melden Fortschritt und warten auf Freigaben
+6. **Nach Abschluss aller Worker:** Orchestrator macht Integration + :review
+
+### Cluster-Übergabe-Format
+
+Statt der normalen "zwei Links" Übergabe gibt der Orchestrator bei :init aus:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CLUSTER-SPRINT VORBEREITET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Modus: Cluster ({N} parallele Sprints)
+
+| Terminal | Sprint | System | Sprint-Plan |
+|----------|--------|--------|-------------|
+| A | Sprint 1 | {System} | docs/sprints/{name}/sprint-001.md |
+| B | Sprint 2 | {System} | docs/sprints/{name}/sprint-002.md |
+| C | (wartet) | {System} | docs/sprints/{name}/sprint-003.md |
+
+## Abhängigkeiten
+Sprint 3 wartet auf Sprint 1 + 2
+
+## So startest du die Worker
+
+Öffne Terminal A:
+> Master-Brief: docs/sprints/{name}/master-brief.md
+> Sprint-Plan: docs/sprints/{name}/sprint-001.md
+> Modus: Cluster-Worker
+
+Öffne Terminal B:
+> Master-Brief: docs/sprints/{name}/master-brief.md
+> Sprint-Plan: docs/sprints/{name}/sprint-002.md
+> Modus: Cluster-Worker
+
+Dieses Terminal bleibt Orchestrator.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
