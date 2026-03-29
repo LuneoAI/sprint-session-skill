@@ -116,9 +116,9 @@ Workers discover each other automatically via the peers network. The orchestrato
 ```markdown
 ## Cluster Plan
 
-Sprint 1 (Gravity-Backend) ──→ Sprint 3 (Solaris-Wiring)
-Sprint 2 (Nova-Frontend)   ──→ Sprint 3 (Solaris-Wiring)
-Sprint 4 (Matrix-Sync)     ──→ (independent)
+Sprint 1 (API-Backend)    ──→ Sprint 3 (Integration-Layer)
+Sprint 2 (React-Frontend) ──→ Sprint 3 (Integration-Layer)
+Sprint 4 (Data-Sync)      ──→ (independent)
 ```
 
 ### When to Use Cluster vs. Sequential
@@ -270,6 +270,8 @@ When working with Claude Code on larger projects, the same problems appeared: co
 **sprint-session** is the bridge — it brings the discipline of systematic process work into AI-assisted development, using nothing but two markdown files and a clear protocol.
 
 The cluster mode came from a simple observation: at a certain project size, the bottleneck is no longer writing code — it's coordinating who does what, when, and in which order. With claude-peers providing real-time inter-session communication, sprints that used to run sequentially can now run as a self-coordinating cluster.
+
+The `spawn-cluster.sh` script takes it one step further: the orchestrator session spawns worker sessions automatically via tmux — no manual terminal opening required.
 
 ## Credits
 

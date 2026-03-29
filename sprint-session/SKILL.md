@@ -99,17 +99,17 @@ Mehrere CC-Sessions arbeiten gleichzeitig an verschiedenen Sprints und koordinie
 ## Cluster-Plan
 
 ### Dependency-Graph
-Sprint 1 (Gravity-Backend) ──→ Sprint 3 (Solaris-Wiring)
-Sprint 2 (Nova-Frontend)   ──→ Sprint 3 (Solaris-Wiring)
-Sprint 4 (Matrix-Sync)     ──→ (unabhängig)
+Sprint 1 (API-Backend)    ──→ Sprint 3 (Integration-Layer)
+Sprint 2 (React-Frontend) ──→ Sprint 3 (Integration-Layer)
+Sprint 4 (Data-Sync)      ──→ (unabhängig)
 
 ### Cluster-Zuweisung
 | Sprint | System | Abhängig von | Cluster-Slot |
 |--------|--------|-------------|--------------|
-| Sprint 1 | Gravity | — | Slot A (parallel) |
-| Sprint 2 | Nova | — | Slot B (parallel) |
-| Sprint 3 | Solaris | Sprint 1 + 2 | Slot C (wartet) |
-| Sprint 4 | Matrix | — | Slot A oder B (nach Freiwerden) |
+| Sprint 1 | Backend | — | Slot A (parallel) |
+| Sprint 2 | Frontend | — | Slot B (parallel) |
+| Sprint 3 | Integration | Sprint 1 + 2 | Slot C (wartet) |
+| Sprint 4 | Data-Sync | — | Slot A oder B (nach Freiwerden) |
 ```
 
 **Peers-Nachrichten-Protokoll:**
@@ -123,7 +123,7 @@ Sprint 4 (Matrix-Sync)     ──→ (unabhängig)
 | `SYNC_REQUEST:{Details}` | Worker | Worker | Direkte Koordination zwischen Peers |
 
 **Regeln für Cluster-Modus:**
-- Jeder Worker hat **eigene Sprint-Akte** und **eigenen Guardian-Lock**
+- Jeder Worker hat **eigene Sprint-Akte** und **eigenen Lock**
 - Workers ändern **nie** Dateien die einem anderen Worker gehören
 - Bei Konflikten: STOPPEN, Orchestrator benachrichtigen, nicht selbst lösen
 - Orchestrator prüft via `list_peers` regelmäßig ob alle Worker noch leben
@@ -346,7 +346,7 @@ Falls der Master-Brief einen Cluster-Plan enthält:
 Wenn mehrere Terminals gleichzeitig aktiv sind (häufiger Fall: 4-5 Terminals):
 
 14. **Zu Beginn prüfen:** `git log --oneline -5` — arbeitet ein anderes Terminal gerade am selben Projekt?
-15. **Guardian-Status prüfen:** Gibt es aktive Locks auf das Zielsystem?
+15. **Lock-Status prüfen:** Gibt es aktive Locks auf das Zielsystem?
 16. **Abgrenzung klären:** Falls ein anderes Terminal aktiv ist:
     - Welches System/Verzeichnis bearbeitet es?
     - Gibt es Überschneidungen mit meinem Sprint?
@@ -550,13 +550,13 @@ Nach `gsd-verify` oder `sprint-retro` stellt sich heraus: Der Sprint hat etwas b
 | Ein Task hat einen Bug eingeführt | Bug fixen, nicht den ganzen Sprint zurückrollen |
 | Mehrere Tasks sind kaputt verwoben | `git stash` für uncommittete Änderungen, dann Task-für-Task prüfen |
 | Sprint hat grundlegend falsche Richtung genommen | `git revert` der Sprint-Commits (erzeugt Gegen-Commits, Geschichte bleibt) |
-| Alles ist kaputt, nichts zu retten | Guardian-Snapshot als Fallback: `bash /root/guardian/scripts/guardian-snapshot.sh` |
+| Alles ist kaputt, nichts zu retten | Backup/Snapshot als Fallback wiederherstellen |
 
 ### Regeln
 
 - **Nie `git reset --hard` ohne explizite User-Bestätigung** — das zerstört History
 - **Immer `git revert` statt `git reset`** — Geschichte bleibt erhalten
-- **Guardian-Snapshot ist der letzte Fallback**, nicht die erste Option
+- **Backup-Snapshot ist der letzte Fallback**, nicht die erste Option
 - Nach Rollback: Sprint-Akte aktualisieren mit "Sprint N zurückgerollt, Grund: ..."
 - Neuen Sprint-Plan schreiben der das Problem berücksichtigt
 
@@ -568,8 +568,8 @@ Nach `gsd-verify` oder `sprint-retro` stellt sich heraus: Der Sprint hat etwas b
 
 - `claude-peers` MCP-Server in `.mcp.json` konfiguriert
 - Broker läuft auf localhost:7899 (wird automatisch gestartet)
-- Alle Sessions auf demselben Server (116.203.236.82)
-- Guardian-Locks für jedes System separat angefordert
+- Alle Sessions auf demselben Server
+- Locks für jedes System separat angefordert (falls Lock-System vorhanden)
 
 ### Wann Cluster-Modus erlaubt
 
