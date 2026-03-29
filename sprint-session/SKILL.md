@@ -54,27 +54,70 @@ Wenn ein Sprint bei der Planung mehr als 6 substanzielle Tasks hat → in zwei S
 
 ---
 
-## Ausführungsmodus — Sequenziell vs. Cluster
+## Ausführungsmodus — Empfehlung nach Planung
 
-Bei :init nach der Planung entscheiden: **Wie werden die Sprints ausgeführt?**
+Nach der Planung bei :init analysiert Claude das Projekt und spricht eine **begründete Empfehlung** aus. Nicht einfach fragen — sondern basierend auf der Projektstruktur den passenden Modus empfehlen.
 
-### Entscheidungsmatrix
+### Drei Optionen
 
-| Kriterium | → Sequenziell | → Cluster |
-|-----------|---------------|-----------|
-| Sprints bauen aufeinander auf | ✅ | ❌ |
-| Sprints betreffen dasselbe System | ✅ | ❌ |
-| Sprints betreffen verschiedene Systeme | möglich | ✅ besser |
-| Projekt hat klare Wave-Trennung | möglich | ✅ besser |
-| User will maximale Kontrolle | ✅ | ❌ |
-| User will maximale Geschwindigkeit | ❌ | ✅ |
-| Weniger als 3 Sprints gesamt | ✅ | Overhead lohnt nicht |
+| Modus | Wann passend | Typisches Projekt |
+|-------|-------------|-------------------|
+| **Quick Session** (`/gsd-quick`) | 1-3 Tasks, ein System, kein Folge-Sprint | Bugfix, kleine Anpassung, Refactoring |
+| **Sprint-Plan** (sequenziell) | 2-6 Sprints, Abhängigkeiten zwischen Sprints, ein System | Feature-Entwicklung, schrittweiser Umbau |
+| **Cluster-Plan** (parallel) | 3+ unabhängige Sprints, verschiedene Systeme | Multi-System-Projekt, großer Umbau über mehrere Bereiche |
 
-### Sequenziell (Standard)
+### Empfehlungs-Logik (Claude macht das automatisch nach der Planung)
 
-Wie bisher: Ein Terminal nach dem anderen. User öffnet neues Terminal, gibt zwei Links ein, nächster Sprint startet. Einfach, sicher, bewährt.
+```
+NACH der Planung (Wellen, Sprints, Tasks sind definiert):
 
-### Cluster-Modus (mit claude-peers)
+1. Anzahl Sprints zählen
+2. Abhängigkeiten zwischen Sprints analysieren
+3. Betroffene Systeme/Verzeichnisse identifizieren
+4. Empfehlung aussprechen:
+
+WENN nur 1-3 Tasks und kein Folge-Sprint:
+  → "Das ist überschaubar — ich würde das direkt als Quick Session machen."
+
+WENN 2-6 Sprints und die meisten hängen voneinander ab:
+  → "Das Projekt hat N Sprints die aufeinander aufbauen —
+     ich empfehle einen Sprint-Plan, eins nach dem anderen."
+
+WENN 3+ Sprints und mindestens 2 davon unabhängig voneinander:
+  → "Das Projekt hat N Sprints über M verschiedene Systeme.
+     Davon können X parallel laufen. Ich empfehle einen Cluster-Plan —
+     das spart ungefähr Y Sprints an Wartezeit."
+
+User entscheidet. Claude führt aus.
+```
+
+### Wie Claude die Empfehlung formuliert
+
+Nach der Planung sagt Claude etwas wie:
+
+> "So, das Projekt ist geplant: 6 Sprints über 3 Systeme, aufgeteilt in 2 Wellen.
+>
+> Jetzt zur Umsetzung — drei Optionen:
+> - **Quick Session** — passt hier nicht, dafür ist es zu groß
+> - **Sprint-Plan** — eins nach dem anderen, sicher und kontrolliert
+> - **Cluster-Plan** — Sprint 1-3 können parallel laufen (verschiedene Systeme), Sprint 4-6 hängen davon ab
+>
+> **Meine Empfehlung: Cluster-Plan.** Sprint 1 (Backend), 2 (Frontend) und 3 (API) haben keine gemeinsamen Dateien und können gleichzeitig laufen. Das spart dir 2 Sprint-Zyklen. Sprint 4-6 folgen dann sequenziell.
+>
+> Was möchtest du?"
+
+**Regeln für die Empfehlung:**
+- Immer begründen WARUM dieser Modus passt
+- Bei Cluster immer sagen WELCHE Sprints parallel können und welche nicht
+- Bei Grenzfällen beide Optionen gleichwertig anbieten
+- User-Entscheidung ist final — nicht nachverhandeln
+- Quick Session nur empfehlen wenn das Projekt wirklich klein genug ist
+
+### Sequenziell (Sprint-Plan)
+
+Ein Terminal nach dem anderen. User öffnet neues Terminal, gibt zwei Links ein, nächster Sprint startet. Einfach, sicher, bewährt.
+
+### Cluster-Modus (Cluster-Plan mit claude-peers)
 
 Mehrere CC-Sessions arbeiten gleichzeitig an verschiedenen Sprints und koordinieren sich über das Peers-Netzwerk. **Voraussetzung:** `claude-peers` MCP-Server in `.mcp.json` konfiguriert.
 
@@ -99,17 +142,17 @@ Mehrere CC-Sessions arbeiten gleichzeitig an verschiedenen Sprints und koordinie
 ## Cluster-Plan
 
 ### Dependency-Graph
-Sprint 1 (API-Backend)    ──→ Sprint 3 (Integration-Layer)
-Sprint 2 (React-Frontend) ──→ Sprint 3 (Integration-Layer)
-Sprint 4 (Data-Sync)      ──→ (unabhängig)
+Sprint 1 (Gravity-Backend) ──→ Sprint 3 (Solaris-Wiring)
+Sprint 2 (Nova-Frontend)   ──→ Sprint 3 (Solaris-Wiring)
+Sprint 4 (Matrix-Sync)     ──→ (unabhängig)
 
 ### Cluster-Zuweisung
 | Sprint | System | Abhängig von | Cluster-Slot |
 |--------|--------|-------------|--------------|
-| Sprint 1 | Backend | — | Slot A (parallel) |
-| Sprint 2 | Frontend | — | Slot B (parallel) |
-| Sprint 3 | Integration | Sprint 1 + 2 | Slot C (wartet) |
-| Sprint 4 | Data-Sync | — | Slot A oder B (nach Freiwerden) |
+| Sprint 1 | Gravity | — | Slot A (parallel) |
+| Sprint 2 | Nova | — | Slot B (parallel) |
+| Sprint 3 | Solaris | Sprint 1 + 2 | Slot C (wartet) |
+| Sprint 4 | Matrix | — | Slot A oder B (nach Freiwerden) |
 ```
 
 **Peers-Nachrichten-Protokoll:**
@@ -123,7 +166,7 @@ Sprint 4 (Data-Sync)      ──→ (unabhängig)
 | `SYNC_REQUEST:{Details}` | Worker | Worker | Direkte Koordination zwischen Peers |
 
 **Regeln für Cluster-Modus:**
-- Jeder Worker hat **eigene Sprint-Akte** und **eigenen Lock**
+- Jeder Worker hat **eigene Sprint-Akte** und **eigenen Guardian-Lock**
 - Workers ändern **nie** Dateien die einem anderen Worker gehören
 - Bei Konflikten: STOPPEN, Orchestrator benachrichtigen, nicht selbst lösen
 - Orchestrator prüft via `list_peers` regelmäßig ob alle Worker noch leben
@@ -193,11 +236,12 @@ Wenn der User sagt "Ich bin mobil" oder "Bin unterwegs":
 2. **Projekt aufteilen** in Wellen → Etappen → Sprints
    - Kleine Projekte (1-3 Wellen): ALLES durchplanen
    - Komplexe Projekte (4+ Wellen): Welle 1-2 detailliert, Rest grob (Ziele, nicht Tasks)
-3. **Ausführungsmodus entscheiden** → Sequenziell oder Cluster?
+3. **Ausführungsmodus empfehlen** → Nach der Planung analysieren und begründet empfehlen:
    - Sprints auf Abhängigkeiten analysieren: Welche können parallel laufen?
-   - User fragen: "Dieses Projekt hat N unabhängige Sprints — soll ich die als Cluster koordinieren oder eins nach dem anderen?"
+   - Betroffene Systeme/Verzeichnisse identifizieren
+   - Begründete Empfehlung aussprechen: Quick Session, Sprint-Plan oder Cluster-Plan
+   - User entscheidet — Claude führt den gewählten Modus aus
    - Bei Cluster: Dependency-Graph erstellen und in Master-Brief aufnehmen
-   - Bei Sequenziell: normal weitermachen wie bisher
 4. **Master-Brief generieren** (`docs/sprints/{name}/master-brief.md`)
    - Bei Cluster-Modus: `## Cluster-Plan` Abschnitt mit Dependency-Graph und Slot-Zuweisung
 5. **Sprint-Pläne generieren**
@@ -346,7 +390,7 @@ Falls der Master-Brief einen Cluster-Plan enthält:
 Wenn mehrere Terminals gleichzeitig aktiv sind (häufiger Fall: 4-5 Terminals):
 
 14. **Zu Beginn prüfen:** `git log --oneline -5` — arbeitet ein anderes Terminal gerade am selben Projekt?
-15. **Lock-Status prüfen:** Gibt es aktive Locks auf das Zielsystem?
+15. **Guardian-Status prüfen:** Gibt es aktive Locks auf das Zielsystem?
 16. **Abgrenzung klären:** Falls ein anderes Terminal aktiv ist:
     - Welches System/Verzeichnis bearbeitet es?
     - Gibt es Überschneidungen mit meinem Sprint?
@@ -550,13 +594,13 @@ Nach `gsd-verify` oder `sprint-retro` stellt sich heraus: Der Sprint hat etwas b
 | Ein Task hat einen Bug eingeführt | Bug fixen, nicht den ganzen Sprint zurückrollen |
 | Mehrere Tasks sind kaputt verwoben | `git stash` für uncommittete Änderungen, dann Task-für-Task prüfen |
 | Sprint hat grundlegend falsche Richtung genommen | `git revert` der Sprint-Commits (erzeugt Gegen-Commits, Geschichte bleibt) |
-| Alles ist kaputt, nichts zu retten | Backup/Snapshot als Fallback wiederherstellen |
+| Alles ist kaputt, nichts zu retten | Guardian-Snapshot als Fallback: `bash /root/guardian/scripts/guardian-snapshot.sh` |
 
 ### Regeln
 
 - **Nie `git reset --hard` ohne explizite User-Bestätigung** — das zerstört History
 - **Immer `git revert` statt `git reset`** — Geschichte bleibt erhalten
-- **Backup-Snapshot ist der letzte Fallback**, nicht die erste Option
+- **Guardian-Snapshot ist der letzte Fallback**, nicht die erste Option
 - Nach Rollback: Sprint-Akte aktualisieren mit "Sprint N zurückgerollt, Grund: ..."
 - Neuen Sprint-Plan schreiben der das Problem berücksichtigt
 
@@ -568,8 +612,8 @@ Nach `gsd-verify` oder `sprint-retro` stellt sich heraus: Der Sprint hat etwas b
 
 - `claude-peers` MCP-Server in `.mcp.json` konfiguriert
 - Broker läuft auf localhost:7899 (wird automatisch gestartet)
-- Alle Sessions auf demselben Server
-- Locks für jedes System separat angefordert (falls Lock-System vorhanden)
+- Alle Sessions auf demselben Server (116.203.236.82)
+- Guardian-Locks für jedes System separat angefordert
 
 ### Wann Cluster-Modus erlaubt
 
